@@ -4,5 +4,169 @@ author: "NazarVatsyk"
 date: "2026-10-24"
 output: ioslides_presentation
 ---
+1. Reading data
+```{r}
+library("tidyverse")
+library(readxl)
+library(rstudioapi)
+library(janitor)
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+df <- read_csv("Prozoro_sales_cleaned.csv")%>%
+  janitor::clean_names()
+```
+2. Checking relationship between final price and MLV
+```{r}
+df%>%
+  ggplot()+
+  geom_point(aes(x=normativna_grosova_ocinka, y = dohid))+
+  geom_smooth(aes(x=normativna_grosova_ocinka, y = dohid), method = 'lm')+
+  theme_minimal()+
+  labs(title = "Rent price and monetary land valuation relationship", 
+       subtitle = paste("perason's coeficient =",
+                        round(cor(df$normativna_grosova_ocinka,
+                                  df$dohid, method = "pearson"),3)))+
+  xlim(c(0,5e+07))+
+  ylim(c(0,3e+07))
+  
+```
+3.We want to check if number of bidders decides the final price
+```{r}
+df <- df%>%
+  mutate(n_bidders = if_else(kil_kist_propozicij>15, '15+', as.character(kil_kist_propozicij)))%>%
+  mutate(n_bidders = factor(n_bidders, levels = c("1","2","3","4","5",
+                                              "6","7","8","9","10",
+                                              "11","12","13","14","15",
+                                              "15+"), ordered = T))
+df%>%
+  ggplot()+
+  geom_boxplot(aes(x = n_bidders,  price_change_pct), outliers = F)+
+  theme_minimal()+
+  labs(title = "Final price to number of bidders")
+  
+```
 
+```{r}
+df%>%
+  ggplot()+
+  geom_boxplot(aes(x = n_bidders, y=normativna_grosova_ocinka), outliers = F)+
+  geom_point(data = df%>%
+               group_by(n_bidders)%>%
+               summarize(normativna_grosova_ocinka = mean(normativna_grosova_ocinka)),
+             aes(x = n_bidders, y = normativna_grosova_ocinka), colour = "red")+
+  theme_minimal()+
+  labs(title = "MLV of land to number of bidders relationship",
+       caption = "red points - averages")
+```
+```{r}
+df <- df%>%
+  mutate(winner = case_when(
+    str_detect(str_to_upper(peremozec), "ФЕРМЕРСЬК") ~ "ФГ",
+    str_detect(str_to_upper(peremozec), "ТОВАРИСТВО З ОБМЕЖЕНОЮ") ~ "ТОВ",
+    str_detect(str_to_upper(peremozec), "ПРИВАТНЕ .*ПІДПРИЄМСТВО") ~ "ПП",
+    tip_identifikatora=="ЄДРПОУ" ~ "інша юрособа",
+    tip_identifikatora=="ІПН/РНОКПП (ФОП)" ~ "ФОП",
+    .default = "фізична особа"))
+df%>%
+  ggplot()+
+  geom_density(aes(x = plosa_zemel_noi_dilanki_ga), alpha = 0.2)+
+  xlim(c(0,50))+
+  facet_wrap(~winner)+
+  theme_minimal()
+```
+```{r}
+df%>%
+  ggplot()+
+  geom_boxplot(aes(x = fct_reorder(winner, price_change_pct, median),
+                   y = price_change_pct, fill = winner), outliers = F)+
+  geom_point(data = (df%>%
+                       group_by(winner)%>%
+                       summarize(price_change_pct = mean(price_change_pct))),
+             aes(x=winner, y = price_change_pct), size = 2)+
+  labs(title = "Наскільки переплачують переможці",
+       caption = "Точками позначено середнє значення",
+       x = "winner")+
+  theme_minimal()
+```
 
+```{r}
+war_exp0 <- c("Херсонська область","Запорізька область","Донецька область",
+                 "Сумська область","Харківська область",
+                 "Чернігівська область", "Луганська область")
+df <- df%>%
+  mutate(war_exposed = oblast_kadastr %in% war_exp0)
+sum(df$war_exposed)
+df%>%
+  group_by(war_exposed)%>%
+  arrange(data_aukcionu)%>%
+  mutate(mean_lease_ha_price = cummean(lease_ha_usd))%>%
+  ggplot()+
+  geom_line(aes(x = data_aukcionu, y= mean_lease_ha_price, colour = war_exposed))+
+  geom_vline(aes(xintercept = as.POSIXct('2022-02-24')))+
+  theme_minimal()
+```
+
+```{r}
+df%>%
+  ggplot()+
+  geom_boxplot(aes(x = fct_reorder(tip_vlasnosti, price_change_percent, mean), 
+                   y = price_change_percent, fill = tip_vlasnosti),
+               outliers = F)+
+  theme_minimal()
+```
+```{r}
+df <- df%>%mutate(nho_per_ha = normativna_grosova_ocinka/plosa_zemel_noi_dilanki_ga,
+         rent_to_nho = ifelse(normativna_grosova_ocinka!=0,
+                              dohid/normativna_grosova_ocinka,
+                              NA),
+         start_to_nho = ifelse(normativna_grosova_ocinka!=0,
+                              vistavlena_vartist/normativna_grosova_ocinka,
+                              NA))
+```
+
+```{r fig.height=7, message=FALSE}
+df%>%
+  group_by(oblast, year)%>%
+  summarize(n = n(), median_rent_to_nho = median(rent_to_nho, na.rm = T))%>%
+  filter(n>=20)%>%
+  ungroup()%>% 
+  mutate(oblast = fct_reorder(oblast, median_rent_to_nho))%>%
+  ggplot()+
+  geom_tile(aes(x = factor(year), y = oblast, fill = median_rent_to_nho))+
+  geom_text(aes(x = factor(year), y = oblast,
+                label = paste0(round(median_rent_to_nho*100), "%")), size = 3)+
+  scale_fill_distiller(palette = "Blues", direction = 1)+
+  theme_minimal()+
+  labs(title = "Median of (price/MLV): region x year", x = NULL, y = NULL,
+       caption = "missing cells: number of deals <20")
+```
+```{r}
+winners <- df%>%
+  group_by(kod_peremozca)%>%
+  summarize(name = first(peremozec),
+            lots = n(),
+            area = sum(plosa_zemel_noi_dilanki_ga))%>%
+  arrange(desc(area))
+```
+Крива Лоренца: наскільки нерівно площа розподілена між переможцями
+```{r}
+lorenz <- winners %>%
+  arrange(area) %>%
+  mutate(cum_winners = row_number() / n(),
+         cum_area    = cumsum(area) / sum(area))
+x <- c(0, lorenz$cum_winners)
+y <- c(0, lorenz$cum_area)
+gini <- 1 - sum(diff(x) * (head(y, -1) + tail(y, -1)))
+
+lorenz%>%
+  ggplot()+
+  geom_line(aes(x = cum_winners, y = cum_area))+
+  geom_abline(aes(intercept = 0, slope = 1), linetype = "dashed")+
+  geom_vline(aes(xintercept = lorenz$cum_winners[which.max(-(lorenz$cum_area-0.25)^2)]),color = "red")+
+  geom_vline(aes(xintercept = lorenz$cum_winners[which.max(-(lorenz$cum_area-0.5)^2)]),color = "red")+
+  geom_vline(aes(xintercept = lorenz$cum_winners[which.max(-(lorenz$cum_area-0.75)^2)]),color = "red")+
+  theme_minimal()+
+  labs(title = "Крива Лоренца: площа між переможцями",
+       subtitle = paste("коефіцієнт Джині ≈", round(gini,3)),
+       x = "частка переможців", y = "частка площі",
+       caption = "червоними лініями відзначено частку власників які володіють 25%, 50%, 75% землі")
+```
