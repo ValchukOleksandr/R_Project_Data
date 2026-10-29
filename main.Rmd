@@ -14,13 +14,103 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 df <- read_csv("Prozoro_sales_cleaned.csv")%>%
   janitor::clean_names()
 ```
-2. Checking relationship between final price and MLV
+2. Checking outliers 
+```{r}
+main_columns <- c(
+  "plosa_zemel_noi_dilanki_ga",
+  "normativna_grosova_ocinka",
+  "dohid",
+  "lease_ha_usd",
+  "price_change_pct",
+  "kil_kist_propozicij"
+)
+calculate_outliers <- function(x) {
+  n <- sum(!is.na(x))
+  
+  q1 <- quantile(x, 0.25, na.rm = TRUE)
+  q3 <- quantile(x, 0.75, na.rm = TRUE)
+  iqr <- q3 - q1
+  
+  lower_iqr <- q1 - 1.5 * iqr
+  upper_iqr <- q3 + 1.5 * iqr
+  
+  avg <- mean(x, na.rm = TRUE)
+  st_dev <- sd(x, na.rm = TRUE)
+  
+  lower_z <- avg - 3 * st_dev
+  upper_z <- avg + 3 * st_dev
+  
+  outliers_iqr <- sum(x < lower_iqr | x > upper_iqr, na.rm = TRUE)
+  outliers_z <- sum(x < lower_z | x > upper_z, na.rm = TRUE)
+  
+  data.frame(
+    n = n,
+    missing = sum(is.na(x)),
+    lower_iqr = round(lower_iqr, 2),
+    upper_iqr = round(upper_iqr, 2),
+    outliers_iqr = outliers_iqr,
+    pct_iqr = round(outliers_iqr / n * 100, 2),
+    lower_z = round(lower_z, 2),
+    upper_z = round(upper_z, 2),
+    outliers_z = outliers_z,
+    pct_z = round(outliers_z / n * 100, 2),
+    row.names = NULL
+  )
+}
+outliers_table <- data.frame()
+
+for (column in main_columns) {
+  result <- calculate_outliers(df[[column]])
+  result <- cbind(indicator = column, result)
+  outliers_table <- rbind(outliers_table, result)
+}
+
+outliers_table
+```
+3.Crating theme
+```{r}
+palette_project <- c(
+  "#2463A6", "#800020", "#548C82",
+  "#C49A54", "#8C789B", "#8295A5"
+)
+
+theme_project <- theme_minimal(base_size = 14) +
+  theme(
+    text = element_text(colour = "#292929", face = "plain"),
+    
+    plot.background = element_rect(fill = "white", colour = NA),
+    panel.background = element_rect(fill = "#FAFBFC", colour = NA),
+    
+    panel.grid.major = element_line(colour = "#E4E8EC", linewidth = 0.3),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    
+    plot.title = element_text(size = 18, colour = "#17324D"),
+    plot.subtitle = element_text(size = 12, colour = "#2463A6"),
+    
+    axis.title = element_text(size = 12),
+    axis.title.x = element_text(margin = margin(t = 12)),
+    axis.title.y = element_text(margin = margin(r = 12)),
+    axis.text = element_text(size = 11, colour = "#292929"),
+    
+    legend.position = "bottom",
+    legend.title = element_text(size = 12),
+    strip.text = element_text(size = 12, colour = "#17324D"),
+    
+    plot.caption = element_text(size = 10, colour = "#666666", hjust = 0),
+    plot.caption.position = "plot"
+  )
+
+theme_set(theme_project)
+```
+
+
+4. Checking relationship between final price and MLV
 ```{r}
 df%>%
   ggplot()+
   geom_point(aes(x=normativna_grosova_ocinka, y = dohid))+
   geom_smooth(aes(x=normativna_grosova_ocinka, y = dohid), method = 'lm')+
-  theme_minimal()+
   labs(title = "Rent price and monetary land valuation relationship", 
        subtitle = paste("perason's coeficient =",
                         round(cor(df$normativna_grosova_ocinka,
@@ -29,7 +119,7 @@ df%>%
   ylim(c(0,3e+07))
   
 ```
-3.We want to check if number of bidders decides the final price
+5.We want to check if number of bidders decides the final price
 ```{r}
 df <- df%>%
   mutate(n_bidders = if_else(kil_kist_propozicij>15, '15+', as.character(kil_kist_propozicij)))%>%
@@ -40,11 +130,10 @@ df <- df%>%
 df%>%
   ggplot()+
   geom_boxplot(aes(x = n_bidders,  price_change_pct), outliers = F)+
-  theme_minimal()+
   labs(title = "Final price to number of bidders")
   
 ```
-
+6. MLV by number of bidders
 ```{r}
 df%>%
   ggplot()+
@@ -53,10 +142,10 @@ df%>%
                group_by(n_bidders)%>%
                summarize(normativna_grosova_ocinka = mean(normativna_grosova_ocinka)),
              aes(x = n_bidders, y = normativna_grosova_ocinka), colour = "red")+
-  theme_minimal()+
   labs(title = "MLV of land to number of bidders relationship",
        caption = "red points - averages")
 ```
+7.Area distribution by type of winner
 ```{r}
 df <- df%>%
   mutate(winner = case_when(
@@ -70,9 +159,9 @@ df%>%
   ggplot()+
   geom_density(aes(x = plosa_zemel_noi_dilanki_ga), alpha = 0.2)+
   xlim(c(0,50))+
-  facet_wrap(~winner)+
-  theme_minimal()
+  facet_wrap(~winner)
 ```
+8. Price increase by winner type
 ```{r}
 df%>%
   ggplot()+
@@ -84,10 +173,9 @@ df%>%
              aes(x=winner, y = price_change_pct), size = 2)+
   labs(title = "Наскільки переплачують переможці",
        caption = "Точками позначено середнє значення",
-       x = "winner")+
-  theme_minimal()
+       x = "winner")
 ```
-
+9. Cumulative mean of price for war exposure regions 
 ```{r}
 war_exp0 <- c("Херсонська область","Запорізька область","Донецька область",
                  "Сумська область","Харківська область",
@@ -101,18 +189,17 @@ df%>%
   mutate(mean_lease_ha_price = cummean(lease_ha_usd))%>%
   ggplot()+
   geom_line(aes(x = data_aukcionu, y= mean_lease_ha_price, colour = war_exposed))+
-  geom_vline(aes(xintercept = as.POSIXct('2022-02-24')))+
-  theme_minimal()
+  geom_vline(aes(xintercept = as.POSIXct('2022-02-24')))
 ```
-
+10. Price change by owner type
 ```{r}
 df%>%
   ggplot()+
-  geom_boxplot(aes(x = fct_reorder(tip_vlasnosti, price_change_percent, mean), 
-                   y = price_change_percent, fill = tip_vlasnosti),
-               outliers = F)+
-  theme_minimal()
+  geom_boxplot(aes(x = fct_reorder(tip_vlasnosti, price_change_pct, mean), 
+                   y = price_change_pct, fill = tip_vlasnosti),
+               outliers = F)
 ```
+11. price/MLV ratio by regoins and years
 ```{r}
 df <- df%>%mutate(nho_per_ha = normativna_grosova_ocinka/plosa_zemel_noi_dilanki_ga,
          rent_to_nho = ifelse(normativna_grosova_ocinka!=0,
@@ -135,10 +222,10 @@ df%>%
   geom_text(aes(x = factor(year), y = oblast,
                 label = paste0(round(median_rent_to_nho*100), "%")), size = 3)+
   scale_fill_distiller(palette = "Blues", direction = 1)+
-  theme_minimal()+
   labs(title = "Median of (price/MLV): region x year", x = NULL, y = NULL,
        caption = "missing cells: number of deals <20")
 ```
+12.Concentration of auctioned land area among winners
 ```{r}
 winners <- df%>%
   group_by(kod_peremozca)%>%
@@ -164,7 +251,6 @@ lorenz%>%
   geom_vline(aes(xintercept = lorenz$cum_winners[which.max(-(lorenz$cum_area-0.25)^2)]),color = "red")+
   geom_vline(aes(xintercept = lorenz$cum_winners[which.max(-(lorenz$cum_area-0.5)^2)]),color = "red")+
   geom_vline(aes(xintercept = lorenz$cum_winners[which.max(-(lorenz$cum_area-0.75)^2)]),color = "red")+
-  theme_minimal()+
   labs(title = "Крива Лоренца: площа між переможцями",
        subtitle = paste("коефіцієнт Джині ≈", round(gini,3)),
        x = "частка переможців", y = "частка площі",
