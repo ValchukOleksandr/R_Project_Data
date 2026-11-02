@@ -2,14 +2,22 @@
 title: "main"
 author: "NazarVatsyk"
 date: "2026-10-24"
-output: ioslides_presentation
+output:
+  slidy_presentation:
+    css: styles.css
+  ioslides_presentation: default
 ---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
 1. Reading data
 ```{r}
 library("tidyverse")
 library(readxl)
 library(rstudioapi)
 library(janitor)
+library(zoo)
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 df <- read_csv("Prozoro_sales_cleaned.csv")%>%
   janitor::clean_names()
@@ -67,59 +75,67 @@ for (column in main_columns) {
 
 outliers_table
 ```
-3.Crating theme
+
+## 3. Creating theme
 ```{r}
 palette_project <- c(
-  "#2463A6", "#800020", "#548C82",
-  "#C49A54", "#8C789B", "#8295A5"
+  "#C2185B","#F48FB1","#7B1E4F","#F7B39A","#A0527A","#F9D5E5" 
 )
-
+pink_div <- c("#880E4F", "#F48FB1", "#F7F7F7", "#9FC9C7", "#2C6E6B")
 theme_project <- theme_minimal(base_size = 14) +
   theme(
-    text = element_text(colour = "#292929", face = "plain"),
+    text = element_text(colour = "#7B1E4F", face = "plain"),
     
-    plot.background = element_rect(fill = "white", colour = NA),
-    panel.background = element_rect(fill = "#FAFBFC", colour = NA),
+    plot.background = element_rect(fill = "#FFF8F8", colour = NA),
+    panel.background = element_rect(fill = "#FFFAF8", colour = NA),
+    panel.grid.minor = element_line(colour = "#F9D5E5", linetype = 'dashed'),
+    panel.grid.major = element_line(colour = "#F48FB1", linewidth = 0.1, linetype = 'longdash'),
     
-    panel.grid.major = element_line(colour = "#E4E8EC", linewidth = 0.3),
-    panel.grid.minor = element_blank(),
-    panel.grid.major.x = element_blank(),
-    
-    plot.title = element_text(size = 18, colour = "#17324D"),
-    plot.subtitle = element_text(size = 12, colour = "#2463A6"),
+    plot.title = element_text(size = 16, colour = "#880E4F", face = 'bold'),
+    plot.subtitle = element_text(size = 12, colour = "#7B1E4F"),
     
     axis.title = element_text(size = 12),
-    axis.title.x = element_text(margin = margin(t = 12)),
-    axis.title.y = element_text(margin = margin(r = 12)),
-    axis.text = element_text(size = 11, colour = "#292929"),
+    axis.title.x = element_text(margin = margin(t = 12), colour = "#7B1E4F"),
+    axis.title.y = element_text(margin = margin(r = 12), colour = "#7B1E4F"),
+    axis.text = element_text(size = 11, colour = "#7B1E4F"),
     
     legend.position = "bottom",
     legend.title = element_text(size = 12),
-    strip.text = element_text(size = 12, colour = "#17324D"),
-    
-    plot.caption = element_text(size = 10, colour = "#666666", hjust = 0),
+    plot.caption = element_text(size = 10, colour = "#7B1E4F", hjust = 0),
     plot.caption.position = "plot"
   )
 
 theme_set(theme_project)
+update_geom_defaults("point", list(colour = "#C2185B"))
+update_geom_defaults("line",  list(colour = '#7B1E4F'))
+update_geom_defaults("bar",   list(fill = "#F48FB1", colour = NA))
+update_geom_defaults("col",   list(fill = "#F48FB1", colour = NA))
+update_geom_defaults('smooth', list(colour = '#7B1E4F'))
+update_geom_defaults('boxplot', list(colour = "#C2185B", fill = "#F9D5E5", alpha = 0.5))
 ```
 
 
-4. Checking relationship between final price and MLV
+## 4. Checking relationship between final price and MLV
 ```{r}
 df%>%
   ggplot()+
-  geom_point(aes(x=normativna_grosova_ocinka, y = dohid))+
+  geom_point(aes(x=normativna_grosova_ocinka, y = dohid), size = 0.6, alpha = 0.5)+
   geom_smooth(aes(x=normativna_grosova_ocinka, y = dohid), method = 'lm')+
-  labs(title = "Rent price and monetary land valuation relationship", 
-       subtitle = paste("perason's coeficient =",
+  labs(title = "Rent price and monetary land valuation relationship",
+       subtitle = paste("Pearson's coefficient =",
                         round(cor(df$normativna_grosova_ocinka,
-                                  df$dohid, method = "pearson"),3)))+
-  xlim(c(0,5e+07))+
-  ylim(c(0,3e+07))
-  
+                                  df$dohid, method = "pearson"),3)),
+       x = "Monetary land valuation (MLV), UAH",
+       y = "Final rent price, UAH",
+       caption = "Each point is one lot; line is a linear fit. Axes are cut at 25M and 15M UAH.")+
+  xlim(c(0,2.5e+07))+
+  ylim(c(0,1.5e+07))+ theme_project
+
 ```
-5.We want to check if number of bidders decides the final price
+
+Rent rises closely with MLV (r = 0.84): each extra UAH of valuation adds about 0.49 UAH of rent across all lots. The spread widens for expensive lots, so rent is harder to predict from MLV at the top of the range.
+
+## 5. We want to check if number of bidders decides the final price
 ```{r}
 df <- df%>%
   mutate(n_bidders = if_else(kil_kist_propozicij>15, '15+', as.character(kil_kist_propozicij)))%>%
@@ -130,10 +146,18 @@ df <- df%>%
 df%>%
   ggplot()+
   geom_boxplot(aes(x = n_bidders,  price_change_pct), outliers = F)+
-  labs(title = "Final price to number of bidders")
-  
+  labs(title = "Final price increase by number of bidders",
+       subtitle = "Competition raises prices sharply up to about 9-10 bidders",
+       x = "Number of bidders",
+       y = "Price increase over starting price, %",
+       caption = "Outliers are hidden.")+
+  theme_project
+
 ```
-6. MLV by number of bidders
+
+Competition matters most at the start: the median increase jumps from 2% with one bidder and 16% with two to 257% with three. It then climbs to roughly 700-900% at 9-10 bidders and levels off, with no further rise for larger groups.
+
+## 6. MLV by number of bidders
 ```{r}
 df%>%
   ggplot()+
@@ -141,41 +165,66 @@ df%>%
   geom_point(data = df%>%
                group_by(n_bidders)%>%
                summarize(normativna_grosova_ocinka = mean(normativna_grosova_ocinka)),
-             aes(x = n_bidders, y = normativna_grosova_ocinka), colour = "red")+
-  labs(title = "MLV of land to number of bidders relationship",
-       caption = "red points - averages")
+             aes(x = n_bidders, y = normativna_grosova_ocinka), color = "#2C6E6B")+
+  labs(title = "Monetary land valuation by number of bidders",
+       subtitle = "More valuable lots attract more bidders",
+       x = "Number of bidders",
+       y = "Monetary land valuation (MLV), UAH",
+       caption = "Green points are group means. Outliers are hidden.")+
+  theme_project
 ```
-7.Area distribution by type of winner
+
+Higher-valued lots draw more bidders: median MLV grows from about 57 thousand UAH with one bidder to about 1.3 million UAH with more than 15. Means sit well above medians, which shows that a few very valuable lots skew each group.
+
+## 7. Area distribution by type of winner
 ```{r}
 df <- df%>%
   mutate(winner = case_when(
-    str_detect(str_to_upper(peremozec), "ФЕРМЕРСЬК") ~ "ФГ",
-    str_detect(str_to_upper(peremozec), "ТОВАРИСТВО З ОБМЕЖЕНОЮ") ~ "ТОВ",
-    str_detect(str_to_upper(peremozec), "ПРИВАТНЕ .*ПІДПРИЄМСТВО") ~ "ПП",
-    tip_identifikatora=="ЄДРПОУ" ~ "інша юрособа",
-    tip_identifikatora=="ІПН/РНОКПП (ФОП)" ~ "ФОП",
-    .default = "фізична особа"))
+    str_detect(str_to_upper(peremozec), "ФЕРМЕРСЬК") ~ "Farm enterprise",
+    str_detect(str_to_upper(peremozec), "ТОВАРИСТВО З ОБМЕЖЕНОЮ") ~ "LLC",
+    str_detect(str_to_upper(peremozec), "ПРИВАТНЕ .*ПІДПРИЄМСТВО") ~ "Private enterprise",
+    tip_identifikatora=="ЄДРПОУ" ~ "Other legal entity",
+    tip_identifikatora=="ІПН/РНОКПП (ФОП)" ~ "Sole proprietor",
+    .default = "Individual"))
 df%>%
   ggplot()+
-  geom_density(aes(x = plosa_zemel_noi_dilanki_ga), alpha = 0.2)+
+  geom_density(aes(x = plosa_zemel_noi_dilanki_ga), alpha = 0.2, colour = '#7B1E4F')+
   xlim(c(0,50))+
-  facet_wrap(~winner)
+  facet_wrap(~winner)+
+  labs(title = "Distribution of lot area by winner type",
+       x = "Lot area, ha",
+       y = "Density",
+       caption = "Lots above 50 ha (at most about 3% of each group) are not shown.")+
+  theme_project
 ```
-8. Price increase by winner type
+
+All winner types mostly take small lots, with a right-skewed area distribution. Individuals concentrate on the smallest plots (median about 4 ha), while LLCs reach about 8 ha.
+
+## 8. Price increase by winner type
 ```{r}
 df%>%
+  mutate(winner = factor(winner, levels = c('Individual', 'LLC', 'Sole proprietor',
+                                            'Other legal entity', 'Private enterprise',
+                                            'Farm enterprise'),
+                         ordered = T))%>%
   ggplot()+
-  geom_boxplot(aes(x = fct_reorder(winner, price_change_pct, median),
-                   y = price_change_pct, fill = winner), outliers = F)+
+  geom_boxplot(aes(x = fct_reorder(winner, price_change_pct, mean),
+                   y = price_change_pct), outliers = F)+
   geom_point(data = (df%>%
                        group_by(winner)%>%
                        summarize(price_change_pct = mean(price_change_pct))),
              aes(x=winner, y = price_change_pct), size = 2)+
-  labs(title = "Наскільки переплачують переможці",
-       caption = "Точками позначено середнє значення",
-       x = "winner")
+  labs(title = "How much winners overpay",
+       subtitle = "Price increase over the starting price, by winner type",
+       caption = "Points mark means. Winner types are sorted by mean. Outliers are hidden.",
+       x = "Winner type",
+       y = "Price increase over starting price, %")+
+  theme_project
 ```
-9. Cumulative mean of price for war exposure regions 
+
+Individuals have the lowest median increase (72%) but the highest mean (614%), so most pay little while a few pay extreme premiums. Business winners are more alike, with medians of about 120-180% and means of about 410-490%.
+
+## 9. 30-period moving average of rent for war-exposed regions
 ```{r}
 war_exp0 <- c("Херсонська область","Запорізька область","Донецька область",
                  "Сумська область","Харківська область",
@@ -184,22 +233,57 @@ df <- df%>%
   mutate(war_exposed = oblast_kadastr %in% war_exp0)
 sum(df$war_exposed)
 df%>%
-  group_by(war_exposed)%>%
-  arrange(data_aukcionu)%>%
-  mutate(mean_lease_ha_price = cummean(lease_ha_usd))%>%
+  select(data_aukcionu, lease_ha_usd, war_exposed) %>%
+  group_by(war_exposed, data_aukcionu) %>%
+  summarize(daily_sum   = sum(lease_ha_usd, na.rm = TRUE),
+            daily_count = sum(!is.na(lease_ha_usd)),
+            .groups = "drop_last") %>%
+  arrange(data_aukcionu, .by_group = TRUE) %>%
+  mutate(
+    roll_sum   = rowSums(sapply(0:29, function(k) lag(daily_sum,   k, default = 0))),
+    roll_count = rowSums(sapply(0:29, function(k) lag(daily_count, k, default = 0))),
+    ma30 = roll_sum / roll_count
+  ) %>%
+  ungroup()%>%
   ggplot()+
-  geom_line(aes(x = data_aukcionu, y= mean_lease_ha_price, colour = war_exposed))+
-  geom_vline(aes(xintercept = as.POSIXct('2022-02-24')))
+  geom_rect(aes(xmin = as.Date('2021-11-01'),xmax = as.Date('2022-02-24'), ymin=0, ymax = 700),
+            alpha = 0.035, fill = "#F9D5E5")+
+  geom_line(aes(x = data_aukcionu, y = ma30, colour = war_exposed))+
+
+  theme_project+
+  scale_color_manual(values = c("#2C6E6B", "#C2185B"),
+                     labels = c("Other regions", "War-exposed regions"))+
+  labs(title = "Rent per hectare before and during the full-scale war",
+       subtitle = "Moving average over the last 30 auction dates",
+       x = "Auction date",
+       y = "Rent, USD per ha",
+       colour = NULL,
+       caption = "Shaded area: period before the invasion of 24 February 2022.")
+
 ```
-10. Price change by owner type
+
+Rent per hectare fell in both groups after the invasion, from a mean of about 490 to 270 USD in other regions and from about 400 to 240 USD in war-exposed ones. Prices have partly recovered since 2025, and war-exposed regions usually stay below the rest despite short spikes above them. The flat stretches in 2022 reflect very few auctions in that period.
+
+## 10. Price change by owner type
 ```{r}
 df%>%
+  mutate(owner_type = c("Державна" = "State", "Комунальна" = "Communal",
+                       "Невизначено" = "Undetermined", "Приватна" = "Private",
+                       "Сумісна" = "Joint")[tip_vlasnosti])%>%
   ggplot()+
-  geom_boxplot(aes(x = fct_reorder(tip_vlasnosti, price_change_pct, mean), 
-                   y = price_change_pct, fill = tip_vlasnosti),
-               outliers = F)
+  geom_boxplot(aes(x = fct_reorder(owner_type, price_change_pct, mean),
+                   y = price_change_pct),
+               outliers = F)+
+  labs(title = "Price increase by land ownership type",
+       x = "Ownership type",
+       y = "Price increase over starting price, %",
+       caption = "Types are sorted by mean. Outliers are hidden. Joint ownership has only 5 lots.")+
+  theme_project
 ```
-11. price/MLV ratio by regoins and years
+
+Communal land makes up about 94% of lots and has a median increase of 133%, well above state land at 74%. The undetermined, private and joint groups are small, so their differences should be read with caution.
+
+## 11. Price/MLV ratio by regions and years
 ```{r}
 df <- df%>%mutate(nho_per_ha = normativna_grosova_ocinka/plosa_zemel_noi_dilanki_ga,
          rent_to_nho = ifelse(normativna_grosova_ocinka!=0,
@@ -208,6 +292,20 @@ df <- df%>%mutate(nho_per_ha = normativna_grosova_ocinka/plosa_zemel_noi_dilanki
          start_to_nho = ifelse(normativna_grosova_ocinka!=0,
                               vistavlena_vartist/normativna_grosova_ocinka,
                               NA))
+oblast_names <- c(
+  "Івано-Франківська область" = "Ivano-Frankivsk", "Волинська область" = "Volyn",
+  "Вінницька область" = "Vinnytsia", "Дніпропетровська область" = "Dnipropetrovsk",
+  "Донецька область" = "Donetsk", "Житомирська область" = "Zhytomyr",
+  "Закарпатська область" = "Zakarpattia", "Запорізька область" = "Zaporizhzhia",
+  "Київська область" = "Kyiv", "Кіровоградська область" = "Kirovohrad",
+  "Луганська область" = "Luhansk", "Львівська область" = "Lviv",
+  "Миколаївська область" = "Mykolaiv", "Одеська область" = "Odesa",
+  "Полтавська область" = "Poltava", "Рівненська область" = "Rivne",
+  "Сумська область" = "Sumy", "Тернопільська область" = "Ternopil",
+  "Харківська область" = "Kharkiv", "Херсонська область" = "Kherson",
+  "Хмельницька область" = "Khmelnytskyi", "Черкаська область" = "Cherkasy",
+  "Чернівецька область" = "Chernivtsi", "Чернігівська область" = "Chernihiv"
+)
 ```
 
 ```{r fig.height=7, message=FALSE}
@@ -215,17 +313,21 @@ df%>%
   group_by(oblast, year)%>%
   summarize(n = n(), median_rent_to_nho = median(rent_to_nho, na.rm = T))%>%
   filter(n>=20)%>%
-  ungroup()%>% 
-  mutate(oblast = fct_reorder(oblast, median_rent_to_nho))%>%
+  ungroup()%>%
+  mutate(oblast = fct_reorder(oblast_names[oblast], median_rent_to_nho))%>%
   ggplot()+
   geom_tile(aes(x = factor(year), y = oblast, fill = median_rent_to_nho))+
   geom_text(aes(x = factor(year), y = oblast,
                 label = paste0(round(median_rent_to_nho*100), "%")), size = 3)+
-  scale_fill_distiller(palette = "Blues", direction = 1)+
-  labs(title = "Median of (price/MLV): region x year", x = NULL, y = NULL,
-       caption = "missing cells: number of deals <20")
+  scale_fill_continuous(palette = pink_div, labels = scales::percent)+
+  labs(title = "Median rent as a share of MLV, by region and year",
+       x = "Year", y = "Region", fill = "Median rent / MLV",
+       caption = "Missing cells: fewer than 20 deals.")
 ```
-12.Concentration of auctioned land area among winners
+
+Rent relative to MLV differs strongly by region, from roughly 12-17% in Kherson, Zakarpattia, Dnipropetrovsk and Odesa to 60-75% in Vinnytsia, Poltava and Ternopil. The typical regional ratio fell from 58% in 2021 to 24% in 2024 and has since recovered to about 35%.
+
+## 12. Concentration of auctioned land area among winners
 ```{r}
 winners <- df%>%
   group_by(kod_peremozca)%>%
@@ -234,7 +336,7 @@ winners <- df%>%
             area = sum(plosa_zemel_noi_dilanki_ga))%>%
   arrange(desc(area))
 ```
-Крива Лоренца: наскільки нерівно площа розподілена між переможцями
+Lorenz curve: how unequally area is distributed among winners
 ```{r}
 lorenz <- winners %>%
   arrange(area) %>%
@@ -242,17 +344,26 @@ lorenz <- winners %>%
          cum_area    = cumsum(area) / sum(area))
 x <- c(0, lorenz$cum_winners)
 y <- c(0, lorenz$cum_area)
-gini <- 1 - sum(diff(x) * (head(y, -1) + tail(y, -1)))
+gini <- 1 - sum((c(x[2:length(x)],1)-x) * (y + c(y[2:length(y)],1)))
 
 lorenz%>%
   ggplot()+
-  geom_line(aes(x = cum_winners, y = cum_area))+
-  geom_abline(aes(intercept = 0, slope = 1), linetype = "dashed")+
-  geom_vline(aes(xintercept = lorenz$cum_winners[which.max(-(lorenz$cum_area-0.25)^2)]),color = "red")+
-  geom_vline(aes(xintercept = lorenz$cum_winners[which.max(-(lorenz$cum_area-0.5)^2)]),color = "red")+
-  geom_vline(aes(xintercept = lorenz$cum_winners[which.max(-(lorenz$cum_area-0.75)^2)]),color = "red")+
-  labs(title = "Крива Лоренца: площа між переможцями",
-       subtitle = paste("коефіцієнт Джині ≈", round(gini,3)),
-       x = "частка переможців", y = "частка площі",
-       caption = "червоними лініями відзначено частку власників які володіють 25%, 50%, 75% землі")
+  geom_area(aes(x = cum_winners, y = cum_area), alpha = 0.5, fill="#F9D5E5")+
+  geom_line(aes(x = cum_winners, y = cum_area), color='#7B1E4F')+
+  geom_abline(aes(intercept = 0, slope = 1), linetype = "dashed", color = '#7B1E4F')+
+  geom_vline(aes(xintercept = lorenz$cum_winners[which.max(-(lorenz$cum_area-0.25)^2)]),
+             color = "#7B1E4F")+
+  geom_vline(aes(xintercept = lorenz$cum_winners[which.max(-(lorenz$cum_area-0.5)^2)]),
+             color = "#7B1E4F")+
+  geom_vline(aes(xintercept = lorenz$cum_winners[which.max(-(lorenz$cum_area-0.75)^2)]),
+             color = "#7B1E4F")+
+  labs(title = "Lorenz curve: land area among winners",
+       subtitle = paste("Gini coefficient ≈", round(gini,3)),
+       x = "Cumulative share of winners", y = "Cumulative share of area",
+       caption = paste("Vertical lines mark the share of winners, smallest first,",
+                       "that holds 25%, 50% and 75% of the area.",
+                       "Dashed line: perfect equality."))+
+  theme_project
 ```
+
+Auctioned land is highly concentrated, with a Gini coefficient of about 0.76 across 6,245 winners. The largest 4% of winners hold half of the area, and the largest 1% hold about a quarter.
