@@ -16,6 +16,8 @@ output:
     css: styles.css
 header-includes:
   - \setbeamersize{text margin left=6mm, text margin right=6mm}
+  - \setbeamertemplate{frametitle}[default][center]
+  - \AtBeginDocument{\renewcommand{\insertshortauthor}{AGROCHUJNA}}
 ---
 
 ```{r setup, include=FALSE}
@@ -315,9 +317,11 @@ war_exp0 <- c("Херсонська область","Запорізька обл
                  "Сумська область","Харківська область",
                  "Чернігівська область", "Луганська область")
 df <- df%>%
+  filter(!is.na(oblast_kadastr)) %>%
   mutate(war_exposed = oblast_kadastr %in% war_exp0)
-sum(df$war_exposed)
+# sum(df$war_exposed)
 df%>%
+  
   select(data_aukcionu, lease_ha_usd, war_exposed) %>%
   group_by(war_exposed, data_aukcionu) %>%
   summarize(daily_sum   = sum(lease_ha_usd, na.rm = TRUE),
@@ -333,9 +337,7 @@ df%>%
   ggplot()+
   geom_rect(aes(xmin = as.Date('2021-11-01'),xmax = as.Date('2022-02-24'), ymin=0, ymax = 700),
             alpha = 0.035, fill = "#F9D5E5")+
-  geom_line(aes(x = data_aukcionu, y = ma30, colour = war_exposed))+
-
-  theme_project+
+  geom_line(aes(x = data_aukcionu, y = ma30, colour = war_exposed)) + theme_project+
   scale_color_manual(values = c("#2C6E6B", "#C2185B"),
                      labels = c("Other regions", "War-exposed regions"))+
   labs(title = "Rent per hectare before and during the full-scale war",
